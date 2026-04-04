@@ -2,6 +2,8 @@
 
 A high-performance Rust rewrite of the Claw Code CLI agent harness. Built for speed, safety, and native tool execution.
 
+**Now supports OpenCode Zen free models** — use `qwen`, `minimax`, `nemotron`, `mimo` models at zero cost.
+
 ## Quick Start
 
 ```bash
@@ -21,7 +23,23 @@ cargo build --release
 
 ## Configuration
 
-Set your API credentials:
+### OpenCode Zen (Free Models)
+
+```bash
+export OPENCODE_API_KEY="sk-zen-key"
+./target/release/claw --model qwen "Hello world"
+```
+
+| Alias | Model | Tokens |
+|-------|-------|--------|
+| `qwen` | `qwen3.6-plus-free` | 32K |
+| `minimax` | `minimax-m2.5-free` | 64K |
+| `nemotron` | `nemotron-3-super-free` | 64K |
+| `mimo` | `mimo-v2-omni-free` | 32K |
+
+See [ZEN_GUIDE.md](ZEN_GUIDE.md) for complete setup instructions.
+
+### Anthropic (Paid)
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -33,6 +51,13 @@ Or authenticate via OAuth:
 
 ```bash
 claw login
+```
+
+### xAI Grok
+
+```bash
+export XAI_API_KEY="xai-..."
+./target/release/claw --model grok "Hello world"
 ```
 
 ## Mock parity harness
