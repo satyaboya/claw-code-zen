@@ -52,9 +52,17 @@ use serde::Deserialize;
 use serde_json::json;
 use tools::{GlobalToolRegistry, RuntimeToolDefinition, ToolSearchOutput};
 
-const DEFAULT_MODEL: &str = "claude-opus-4-6";
+const DEFAULT_MODEL: &str = "qwen3.6-plus-free";
 fn max_tokens_for_model(model: &str) -> u32 {
-    if model.contains("opus") {
+    if model.contains("qwen") {
+        32_000
+    } else if model.contains("minimax") {
+        64_000
+    } else if model.contains("nemotron") {
+        64_000
+    } else if model.contains("mimo") {
+        32_000
+    } else if model.contains("opus") {
         32_000
     } else {
         64_000
@@ -583,6 +591,10 @@ fn resolve_model_alias(model: &str) -> &str {
         "opus" => "claude-opus-4-6",
         "sonnet" => "claude-sonnet-4-6",
         "haiku" => "claude-haiku-4-5-20251213",
+        "qwen" => "qwen3.6-plus-free",
+        "minimax" => "minimax-m2.5-free",
+        "nemotron" => "nemotron-3-super-free",
+        "mimo" => "mimo-v2-omni-free",
         _ => model,
     }
 }

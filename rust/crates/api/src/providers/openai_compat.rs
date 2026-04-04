@@ -32,6 +32,7 @@ pub struct OpenAiCompatConfig {
 
 const XAI_ENV_VARS: &[&str] = &["XAI_API_KEY"];
 const OPENAI_ENV_VARS: &[&str] = &["OPENAI_API_KEY"];
+const OPENCODE_ENV_VARS: &[&str] = &["OPENCODE_API_KEY"];
 
 impl OpenAiCompatConfig {
     #[must_use]
@@ -53,11 +54,23 @@ impl OpenAiCompatConfig {
             default_base_url: DEFAULT_OPENAI_BASE_URL,
         }
     }
+
+    #[must_use]
+    pub const fn zen() -> Self {
+        Self {
+            provider_name: "OpenCode",
+            api_key_env: "OPENCODE_API_KEY",
+            base_url_env: "OPENCODE_BASE_URL",
+            default_base_url: "https://api.opencode.ai/v1",
+        }
+    }
+
     #[must_use]
     pub fn credential_env_vars(self) -> &'static [&'static str] {
         match self.provider_name {
             "xAI" => XAI_ENV_VARS,
             "OpenAI" => OPENAI_ENV_VARS,
+            "OpenCode" => OPENCODE_ENV_VARS,
             _ => &[],
         }
     }
@@ -72,6 +85,7 @@ pub struct OpenAiCompatClient {
     max_retries: u32,
     initial_backoff: Duration,
     max_backoff: Duration,
+    custom_headers: Vec<(String, String)>,
 }
 
 impl OpenAiCompatClient {
@@ -88,6 +102,7 @@ impl OpenAiCompatClient {
             max_retries: DEFAULT_MAX_RETRIES,
             initial_backoff: DEFAULT_INITIAL_BACKOFF,
             max_backoff: DEFAULT_MAX_BACKOFF,
+            custom_headers: Vec::new(),
         }
     }
 
@@ -117,6 +132,12 @@ impl OpenAiCompatClient {
         self.max_retries = max_retries;
         self.initial_backoff = initial_backoff;
         self.max_backoff = max_backoff;
+        self
+    }
+
+    #[must_use]
+    pub fn with_custom_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.custom_headers = headers;
         self
     }
 
@@ -191,8 +212,11 @@ impl OpenAiCompatClient {
         request: &MessageRequest,
     ) -> Result<reqwest::Response, ApiError> {
         let request_url = chat_completions_endpoint(&self.base_url);
-        self.http
-            .post(&request_url)
+        let mut builder = self.http.post(&request_url);
+        for (name, value) in &self.custom_headers {
+            builder = builder.header(name, value);
+        }
+        builder
             .header("content-type", "application/json")
             .bearer_auth(&self.api_key)
             .json(&build_chat_completion_request(request, self.config()))

@@ -28,6 +28,7 @@ pub enum ProviderKind {
     Anthropic,
     Xai,
     OpenAi,
+    OpenCode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +112,42 @@ const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
             default_base_url: openai_compat::DEFAULT_XAI_BASE_URL,
         },
     ),
+    (
+        "qwen",
+        ProviderMetadata {
+            provider: ProviderKind::OpenCode,
+            auth_env: "OPENCODE_API_KEY",
+            base_url_env: "OPENCODE_BASE_URL",
+            default_base_url: "https://api.opencode.ai/v1",
+        },
+    ),
+    (
+        "minimax",
+        ProviderMetadata {
+            provider: ProviderKind::OpenCode,
+            auth_env: "OPENCODE_API_KEY",
+            base_url_env: "OPENCODE_BASE_URL",
+            default_base_url: "https://api.opencode.ai/v1",
+        },
+    ),
+    (
+        "nemotron",
+        ProviderMetadata {
+            provider: ProviderKind::OpenCode,
+            auth_env: "OPENCODE_API_KEY",
+            base_url_env: "OPENCODE_BASE_URL",
+            default_base_url: "https://api.opencode.ai/v1",
+        },
+    ),
+    (
+        "mimo",
+        ProviderMetadata {
+            provider: ProviderKind::OpenCode,
+            auth_env: "OPENCODE_API_KEY",
+            base_url_env: "OPENCODE_BASE_URL",
+            default_base_url: "https://api.opencode.ai/v1",
+        },
+    ),
 ];
 
 #[must_use]
@@ -134,6 +171,13 @@ pub fn resolve_model_alias(model: &str) -> String {
                     _ => trimmed,
                 },
                 ProviderKind::OpenAi => trimmed,
+                ProviderKind::OpenCode => match *alias {
+                    "qwen" => "qwen3.6-plus-free",
+                    "minimax" => "minimax-m2.5-free",
+                    "nemotron" => "nemotron-3-super-free",
+                    "mimo" => "mimo-v2-omni-free",
+                    _ => trimmed,
+                },
             })
         })
         .map_or_else(|| trimmed.to_string(), ToOwned::to_owned)
@@ -158,6 +202,18 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
             default_base_url: openai_compat::DEFAULT_XAI_BASE_URL,
         });
     }
+    if canonical.starts_with("qwen")
+        || canonical.starts_with("minimax")
+        || canonical.starts_with("nemotron")
+        || canonical.starts_with("mimo")
+    {
+        return Some(ProviderMetadata {
+            provider: ProviderKind::OpenCode,
+            auth_env: "OPENCODE_API_KEY",
+            base_url_env: "OPENCODE_BASE_URL",
+            default_base_url: "https://api.opencode.ai/v1",
+        });
+    }
     None
 }
 
@@ -174,6 +230,9 @@ pub fn detect_provider_kind(model: &str) -> ProviderKind {
     }
     if openai_compat::has_api_key("XAI_API_KEY") {
         return ProviderKind::Xai;
+    }
+    if openai_compat::has_api_key("OPENCODE_API_KEY") {
+        return ProviderKind::OpenCode;
     }
     ProviderKind::Anthropic
 }
