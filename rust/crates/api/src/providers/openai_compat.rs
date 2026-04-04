@@ -61,7 +61,7 @@ impl OpenAiCompatConfig {
             provider_name: "OpenCode",
             api_key_env: "OPENCODE_API_KEY",
             base_url_env: "OPENCODE_BASE_URL",
-            default_base_url: "https://api.opencode.ai/v1",
+            default_base_url: "https://opencode.ai/zen/v1",
         }
     }
 

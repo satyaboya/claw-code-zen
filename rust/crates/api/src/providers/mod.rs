@@ -118,7 +118,7 @@ const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
             provider: ProviderKind::OpenCode,
             auth_env: "OPENCODE_API_KEY",
             base_url_env: "OPENCODE_BASE_URL",
-            default_base_url: "https://api.opencode.ai/v1",
+            default_base_url: "https://opencode.ai/zen/v1",
         },
     ),
     (
@@ -127,7 +127,7 @@ const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
             provider: ProviderKind::OpenCode,
             auth_env: "OPENCODE_API_KEY",
             base_url_env: "OPENCODE_BASE_URL",
-            default_base_url: "https://api.opencode.ai/v1",
+            default_base_url: "https://opencode.ai/zen/v1",
         },
     ),
     (
@@ -136,7 +136,7 @@ const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
             provider: ProviderKind::OpenCode,
             auth_env: "OPENCODE_API_KEY",
             base_url_env: "OPENCODE_BASE_URL",
-            default_base_url: "https://api.opencode.ai/v1",
+            default_base_url: "https://opencode.ai/zen/v1",
         },
     ),
     (
@@ -145,7 +145,7 @@ const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
             provider: ProviderKind::OpenCode,
             auth_env: "OPENCODE_API_KEY",
             base_url_env: "OPENCODE_BASE_URL",
-            default_base_url: "https://api.opencode.ai/v1",
+            default_base_url: "https://opencode.ai/zen/v1",
         },
     ),
 ];
@@ -211,7 +211,7 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
             provider: ProviderKind::OpenCode,
             auth_env: "OPENCODE_API_KEY",
             base_url_env: "OPENCODE_BASE_URL",
-            default_base_url: "https://api.opencode.ai/v1",
+            default_base_url: "https://opencode.ai/zen/v1",
         });
     }
     None
