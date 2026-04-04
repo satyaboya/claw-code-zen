@@ -35,12 +35,17 @@ impl ProviderClient {
             ProviderKind::OpenAi => Ok(Self::OpenAi(OpenAiCompatClient::from_env(
                 OpenAiCompatConfig::openai(),
             )?)),
-            ProviderKind::OpenCode => Ok(Self::OpenCode(
-                OpenAiCompatClient::from_env(OpenAiCompatConfig::zen())?
-                    .with_custom_headers(vec![
-                        ("x-opencode-client".to_string(), "cli".to_string()),
-                    ])
-            )),
+            ProviderKind::OpenCode => {
+                let session_id = std::env::var("OPENCODE_SESSION_ID")
+                    .unwrap_or_else(|_| "claw-session".to_string());
+                Ok(Self::OpenCode(
+                    OpenAiCompatClient::from_env(OpenAiCompatConfig::zen())?
+                        .with_custom_headers(vec![
+                            ("x-opencode-client".to_string(), "cli".to_string()),
+                            ("x-opencode-session".to_string(), session_id),
+                        ])
+                ))
+            }
         }
     }
 
