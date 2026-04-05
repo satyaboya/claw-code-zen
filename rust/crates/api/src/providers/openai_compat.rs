@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -14,7 +13,6 @@ use crate::types::{
 };
 
 use super::{Provider, ProviderFuture};
-use super::zen_rotation::ZenKeyRotation;
 
 pub const DEFAULT_XAI_BASE_URL: &str = "https://api.x.ai/v1";
 pub const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
