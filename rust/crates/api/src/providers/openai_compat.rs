@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, VecDeque};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -13,6 +14,7 @@ use crate::types::{
 };
 
 use super::{Provider, ProviderFuture};
+use super::zen_rotation::ZenKeyRotation;
 
 pub const DEFAULT_XAI_BASE_URL: &str = "https://api.x.ai/v1";
 pub const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
@@ -86,6 +88,7 @@ pub struct OpenAiCompatClient {
     initial_backoff: Duration,
     max_backoff: Duration,
     custom_headers: Vec<(String, String)>,
+    zen_rotation: Option<Arc<ZenKeyRotation>>,
 }
 
 impl OpenAiCompatClient {
@@ -103,6 +106,7 @@ impl OpenAiCompatClient {
             initial_backoff: DEFAULT_INITIAL_BACKOFF,
             max_backoff: DEFAULT_MAX_BACKOFF,
             custom_headers: Vec::new(),
+            zen_rotation: None,
         }
     }
 
@@ -138,6 +142,12 @@ impl OpenAiCompatClient {
     #[must_use]
     pub fn with_custom_headers(mut self, headers: Vec<(String, String)>) -> Self {
         self.custom_headers = headers;
+        self
+    }
+
+    #[must_use]
+    pub fn with_zen_rotation(mut self, rotation: Arc<ZenKeyRotation>) -> Self {
+        self.zen_rotation = Some(rotation);
         self
     }
 
@@ -184,7 +194,11 @@ impl OpenAiCompatClient {
 
         let last_error = loop {
             attempts += 1;
-            let retryable_error = match self.send_raw_request(request).await {
+            let api_key = match &self.zen_rotation {
+                Some(rotation) => rotation.current_key().to_string(),
+                None => self.api_key.clone(),
+            };
+            let retryable_error = match self.send_raw_request(request, &api_key).await {
                 Ok(response) => match expect_success(response).await {
                     Ok(response) => return Ok(response),
                     Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => error,
@@ -193,6 +207,12 @@ impl OpenAiCompatClient {
                 Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => error,
                 Err(error) => return Err(error),
             };
+
+            if let Some(ref rotation) = self.zen_rotation {
+                if self.is_rate_limited(&retryable_error) {
+                    rotation.rotate();
+                }
+            }
 
             if attempts > self.max_retries {
                 break retryable_error;
@@ -207,9 +227,20 @@ impl OpenAiCompatClient {
         })
     }
 
+    fn is_rate_limited(&self, error: &ApiError) -> bool {
+        matches!(
+            error,
+            ApiError::Api {
+                status,
+                ..
+            } if status.as_u16() == 429
+        )
+    }
+
     async fn send_raw_request(
         &self,
         request: &MessageRequest,
+        api_key: &str,
     ) -> Result<reqwest::Response, ApiError> {
         let request_url = chat_completions_endpoint(&self.base_url);
         let mut builder = self.http.post(&request_url);
@@ -218,7 +249,7 @@ impl OpenAiCompatClient {
         }
         builder
             .header("content-type", "application/json")
-            .bearer_auth(&self.api_key)
+            .bearer_auth(api_key)
             .json(&build_chat_completion_request(request, self.config()))
             .send()
             .await
@@ -330,12 +361,15 @@ impl OpenAiSseParser {
 struct StreamState {
     model: String,
     message_started: bool,
+    reasoning_started: bool,
+    reasoning_finished: bool,
     text_started: bool,
     text_finished: bool,
     finished: bool,
     stop_reason: Option<String>,
     usage: Option<Usage>,
     tool_calls: BTreeMap<u32, ToolCallState>,
+    reasoning_block_idx: u32,
 }
 
 impl StreamState {
@@ -343,13 +377,25 @@ impl StreamState {
         Self {
             model,
             message_started: false,
+            reasoning_started: false,
+            reasoning_finished: false,
             text_started: false,
             text_finished: false,
             finished: false,
             stop_reason: None,
             usage: None,
             tool_calls: BTreeMap::new(),
+            reasoning_block_idx: 1,
         }
+    }
+
+    fn next_block_index(&self) -> u32 {
+        self.tool_calls.len() as u32 + if self.reasoning_finished { 1 } else { 0 }
+            + if self.text_started { 1 } else { 0 }
+    }
+
+    fn reasoning_block_index(&self) -> u32 {
+        self.reasoning_block_idx
     }
 
     fn ingest_chunk(&mut self, chunk: ChatCompletionChunk) -> Result<Vec<StreamEvent>, ApiError> {
@@ -386,11 +432,47 @@ impl StreamState {
         }
 
         for choice in chunk.choices {
+            // Handle reasoning/reasoning_details (CoT)
+            // Prefer reasoning_details (structured) over raw reasoning (duplicated by Zen)
+            let reasoning_text = if !choice.delta.reasoning_details.is_empty() {
+                choice.delta.reasoning_details
+                    .iter()
+                    .filter(|d| d.kind == "reasoning.text")
+                    .map(|d| d.text.as_str())
+                    .collect::<String>()
+            } else {
+                choice.delta.reasoning.unwrap_or_default()
+            };
+
+            if !reasoning_text.is_empty() {
+                if !self.reasoning_started {
+                    self.reasoning_started = true;
+                    events.push(StreamEvent::ContentBlockStart(ContentBlockStartEvent {
+                        index: self.next_block_index(),
+                        content_block: OutputContentBlock::Thinking {
+                            thinking: String::new(),
+                            signature: None,
+                        },
+                    }));
+                }
+                events.push(StreamEvent::ContentBlockDelta(ContentBlockDeltaEvent {
+                    index: self.reasoning_block_index(),
+                    delta: ContentBlockDelta::ThinkingDelta { thinking: reasoning_text },
+                }));
+            }
+
+            // Close reasoning block when text content starts
             if let Some(content) = choice.delta.content.filter(|value| !value.is_empty()) {
+                if self.reasoning_started && !self.reasoning_finished {
+                    self.reasoning_finished = true;
+                    events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
+                        index: self.reasoning_block_index(),
+                    }));
+                }
                 if !self.text_started {
                     self.text_started = true;
                     events.push(StreamEvent::ContentBlockStart(ContentBlockStartEvent {
-                        index: 0,
+                        index: self.next_block_index(),
                         content_block: OutputContentBlock::Text {
                             text: String::new(),
                         },
@@ -450,6 +532,12 @@ impl StreamState {
         self.finished = true;
 
         let mut events = Vec::new();
+        if self.reasoning_started && !self.reasoning_finished {
+            self.reasoning_finished = true;
+            events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
+                index: self.reasoning_block_idx,
+            }));
+        }
         if self.text_started && !self.text_finished {
             self.text_finished = true;
             events.push(StreamEvent::ContentBlockStop(ContentBlockStopEvent {
@@ -630,7 +718,20 @@ struct ChunkDelta {
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
+    reasoning_details: Vec<ReasoningDetail>,
+    #[serde(default)]
     tool_calls: Vec<DeltaToolCall>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ReasoningDetail {
+    #[serde(default)]
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    text: String,
 }
 
 #[derive(Debug, Deserialize)]

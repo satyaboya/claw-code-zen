@@ -4556,8 +4556,17 @@ impl ApiClient for AnthropicRuntimeClient {
                                 input.push_str(&partial_json);
                             }
                         }
-                        ContentBlockDelta::ThinkingDelta { .. }
-                        | ContentBlockDelta::SignatureDelta { .. } => {}
+                        ContentBlockDelta::ThinkingDelta { thinking } => {
+                            if !thinking.is_empty() {
+                                if let Some(progress_reporter) = &self.progress_reporter {
+                                    progress_reporter.mark_text_phase(&thinking);
+                                }
+                                write!(out, "\x1b[2m{thinking}\x1b[0m")
+                                    .and_then(|()| out.flush())
+                                    .map_err(|error| RuntimeError::new(error.to_string()))?;
+                            }
+                        }
+                        ContentBlockDelta::SignatureDelta { .. } => {}
                     },
                     ApiStreamEvent::ContentBlockStop(_) => {
                         if let Some(rendered) = markdown_stream.flush(&renderer) {
@@ -5238,7 +5247,14 @@ fn push_output_block(
             };
             *pending_tool = Some((id, name, initial_input));
         }
-        OutputContentBlock::Thinking { .. } | OutputContentBlock::RedactedThinking { .. } => {}
+        OutputContentBlock::Thinking { thinking, .. } => {
+            if !thinking.is_empty() {
+                write!(out, "\x1b[2m{thinking}\x1b[0m")
+                    .and_then(|()| out.flush())
+                    .map_err(|error| RuntimeError::new(error.to_string()))?;
+            }
+        }
+        OutputContentBlock::RedactedThinking { .. } => {}
     }
     Ok(())
 }
